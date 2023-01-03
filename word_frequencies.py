@@ -17,8 +17,6 @@ class CorpusReader:
             for line in f:
                 yield line.strip()
 
-
-
 def corpus_word_freq():
     corpus_reader = CorpusReader('defi-corpus.cor')
     
@@ -42,9 +40,15 @@ def corpus_word_freq():
         maximum_frequncy = max(word_frequencies.values())
         word_frequencies[word] = (word_frequencies[word]/maximum_frequncy)
         
-    yield word_frequencies
-    
-for word in corpus_word_freq():
-    print(word)
+    return word_frequencies
 
+def main():
+    
+    reader = corpus_word_freq()
+    corp_data = list(reader)
+    for line in corp_data:
+        print(line)
+
+if __name__ == '__main__':
+    main()
 
