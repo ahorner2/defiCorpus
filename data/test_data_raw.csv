@@ -7215,7 +7215,6 @@ The “ Yfi Index ” vault holds the yVaults tokens of the other vaults and acc
 "With the amount of innovation happening within AAVE and anticipated product launches , this will be a great boost to the productivity and bandwidth of the AAVE risk team ."
 "CIP Types There are three types of CIP : Meta Process   describes any process to be adopted or modified to coordinate Compound governance , development , or community efforts Protocol Enhancement   describes any change to the smart contracts that make up the Compound Protocol and Governor Tooling & Support   describes any additions or improvements to off chain infrastructure , tooling , documentation or other components that support the usage of the Compound protocol ."
 The migration script that we will write together can only be applied to the USDC base instance of Comet on Ethereum mainnet .
-* .
 "Most importantly , the startTime must be set AFTER the function is called and will otherwise revert ."
 In contrast things like lending should be pure profit .
 "Voting Updates : EXECUTIVE PROPOSAL Authorizing the ESM on DssFlash and Adding Support for TUSD Implementation   March 25 , 2022 Voted Yes Related Core Value : Pragmatic Conflict of Interest : N/A  Both are vulnerability / errors that need to be fixed ."
