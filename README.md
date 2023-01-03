@@ -1,14 +1,30 @@
 # defiCorpus
 #### A DeFi-native corpus built using ntlk & gensim.
 
-The initial focus is Discourse-based Web3 Governance forums, but will be adding material from several mediums in the future. 
+**The initial focus is Discourse-based Web3 Governance forums, but will be adding material from several mediums in the future.** 
 
-Crypto news articles to be collected using the https://cryptopanic.com/ public API, found here: https://cryptopanic.com/developers/api/about.
+*The first pass came from a collection of DeFi protocols:* 
 
-Free to use under MIT license, and of course, free to improve :)
+* Aave
+* Balancer
+* Compound
+* Frax
+* GMX
+* Instadapp
+* Lido
+* Maker
+* Rocketpool
+* Sushiswap
+* Uniswap
+* Vesta
+* Yearn
 
-Cheers
+Crypto news articles to be collected from Decrypt, The Block, the rest TDB. 
 
-TODO: social media, newsy, whitepaper collection 
+Free to use and free to improve :)
 
-Note: Separating into several datasets to be merged after full review
+Cheers!
+
+*TODO: social media, newsy, whitepaper collection* 
+
+**Note: Separating into several datasets to be merged after full review. Current train/test data needs a decent chunk of processing work.**
