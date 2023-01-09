@@ -90,10 +90,11 @@ ipython_config.py
 # enviro & data sources
 *.ini
 pyenv.cfg
-*_.py
+_*.py
 _config.py
 Scripts/
 Lib/
 *.log
 pyvenv.cfg
 word_frequencies.py
+tweet_list_backup.csv
