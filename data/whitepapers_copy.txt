@@ -1,0 +1,1384 @@
+0x: 0x: An open protocol for decentralized exchange on
+the Ethereum blockchain
+Will Warren, Amir Bandeali
+0xProject.com
+February 21, 2017
+Abstract
+We describe a protocol that facilitates low friction peer-to-peer exchange of ERC20 tokens on the
+Ethereum blockchain. The protocol is intended to serve as an open standard and common building
+block, driving interoperability among decentralized applications (dApps) that incorporate exchange
+functionality. Trades are executed by a system of Ethereum smart contracts that are publicly acces-
+sible, free to use and that any dApp can hook into. DApps built on top of the protocol can access
+public liquidity pools or create their own liquidity pool and charge transaction fees on the resulting
+volume. The protocol is unopinionated: it does not impose costs on its users or arbitrarily extract
+value from one group of users to benet another. Decentralized governance is used to continuously
+and securely integrate updates into the base protocol without disrupting dApps or end users.
+1Contents
+1 Introduction 3
+2 Existing Work 4
+3 Specication 5
+3.1 Message Format . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.1.1 Point-to-point Orders . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.1.2 Broadcast Orders . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3.2 Smart Contract . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+3.2.1 Signature Authentication . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+3.2.2 Fills & Partial Fills . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+3.2.3 Expiration Time . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+3.2.4 Cancelling Orders . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+4 Protocol Token 11
+4.1 Decentralized Governance . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+4.1.1 Continuous Integration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+4.1.2 Token Registry . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+5 Summary 13
+6 Acknowledgements 14
+7 Appendix 15
+7.1 ERC20 Token . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+7.2 Contract ABI . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+7.3 Ethereum Name Service . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+21 Introduction
+Blockchains have been revolutionary by allowing anyone to own and transfer assets across an open nan-
+cial network without the need for a trusted third party. Now that there are hundreds [1] of blockchain-
+based assets, and more being added every month, the need to exchange these assets is compounding.
+With the advent of smart contracts, it is possible for two or more parties to exchange blockchain assets
+without the need for a trusted third party.
+Decentralized exchange is an important progression from the ecosystem of centralized exchanges for a
+few key reasons: decentralized exchanges can provide stronger security guarantees to end users since
+there is no longer a central party which can be hacked, run away with customer funds or be subjected to
+government regulations. Hacks of Mt. Gox, Shapeshift and Bitnex [2,3] have demonstrated that these
+types of systemic risks are palpable. Decentralized exchange will eliminate these risks by allowing users
+to transact trustlessly - without a middleman - and by placing the burden of security onto individual
+users rather than onto a single custodian.
+In the two years that have passed since the Ethereum blockchain's genesis block, numerous decentralized
+applications (dApps) have created Ethereum smart contracts for peer-to-peer exchange. Rapid iteration
+and a lack of best practices have left the blockchain scattered with proprietary and application-specic
+implementations. As a result, end users are exposed to numerous smart contracts of varying quality and
+security, with unique conguration processes and learning curves, all of which implement the same func-
+tionality. This approach imposes unecessary costs on the network by fragmenting end users according
+to the particular dApp each user happens to be using, destroying valuable network eects around liquidity.
+0x is an open protocol for decentralized exchange on the Ethereum blockchain. It is intended to serve
+as a basic building block that may be combined with other protocols to drive increasingly sophisticated
+dApps [4]. 0x uses a publicly accessible system of smart contracts that can act as shared infrastructure
+for a variety of dApps, as shown in Figure 1. In the long run, open technical standards tend to win
+over closed ones, and as more assets are being tokenized on the blockchain each month, we will see more
+dApps that require the use of these dierent tokens. As a result, an open standard for exchange is critical
+to supporting this open economy.
+Shared 
+Exchange 
+Protocol 
+End Users 
+dApp A 
+Shared 
+Liquidity 
+Pool(s) dApp B 
+dApp N Ethereum Blockchain 
+Figure 1: Open protocols should be application-agnostic. Decoupling the protocol layer from the appli-
+cation layer provides mutual benets for dApp developers and end users alike.
+32 Existing Work
+Decentralized exchanges implemented with Ethereum smart contracts have failed to generate signicant
+volume due to ineciencies in their design that impose high friction costs on market makers. In particu-
+lar, these implementations place their order books1on the blockchain [5{8], requiring market makers to
+spend gas each time they post, modify or cancel an order. While the cost of a single transaction is small,
+frequently modifying orders in response to evolving market conditions is prohibitively expensive. In addi-
+tion to imposing high costs on market makers, maintaining an on-chain order book results in transactions
+that consume network bandwidth and bloat the blockchain without necessarily resulting in value transfer.
+Automated market maker (AMM) smart contracts are proposed [9,10] as an alternative to the on-chain
+order book. The AMM smart contract replaces the order book with a price-adjustment model in which
+an asset's spot price deterministically responds to market forces and market participants on either side of
+the market trade with the AMM rather than with each other. Benets of the AMM include availability
+(it is always available to act as a counterparty, though the spot price it oers may be worse than what
+one could get from a more traditional exchange) and ease-of-integration with external smart contracts
+that need to execute market orders. The deterministic nature of price-adjustment models make them
+insensitive to market liquidity, meaning that trades cause prices to move the same amount in both thick
+and thin markets [11]. In other words, AMMs impose articial constraints on the supply curve. If the
+price-adjustment model is too sensitive, even small trades will produce large uctuations in the spot
+price. If the price-adjustment model is not sensitive enough, the AMMs bankroll will quickly be depleted
+by arbitrageurs.
+State channels are proposed as a means of scaling the Ethereum blockchain and reducing costs for a
+variety of applications - including exchange [12] - by moving transactions o of the blockchain [13, 14].
+Participants in a state channel pass cryptographically signed messages back and forth, accumulating
+intermediate state changes without publishing them to the canonical chain until the channel is closed.
+State channels are ideal for \bar tab" applications where numerous intermediate state changes may be
+accumulated o-chain before being settled by a single on-chain transaction (i.e. day trading, poker,
+turn-based games). If one of the channel participants leaves the channel or attempts to cheat, there is a
+challenge period during which the other participant may publish the most recent message they received
+from the oender. It follows that channel participants must always be online to challenge a dishon-
+est counterparty and the participants are therefore vulnerable to DDOS attacks. While state channels
+drastically reduce the number of on-chain transactions for specic use cases, the numerous on-chain
+transactions and security deposit required to open and safely close a state channel make them inecient
+for one-time transactions.
+A hybrid implementation, which we refer to as \o-chain order relay with on-chain settlement," com-
+bines the eciency of state channels with the near instant settlement of on-chain order books. In this
+approach, cryptographically signed orders are broadcast o of the blockchain; an interested counterparty
+may inject one or more of these orders into a smart contract to execute trades trustlessly, directly on the
+blockchain [15, 16]. Friction costs are minimized for market makers because they can signal intent o-
+chain and transactions only occur when value is being transferred. We extend this approach by allowing
+anyone to act as the exchange and by making the protocol application-agnostic.
+1An order book is used to publicly record the interest of buyers and sellers in a particular nancial instrument. Each entry
+includes a reference to the interested party, the number of shares and the price that the buyer or seller are bidding/asking
+for the particular security.
+43 Specication
+Figure 2 presents the general sequence of steps used for o-chain order relay and on-chain settlement.
+For now we ignore a few mechanisms that will become important later.
+Maker 
+ Taker 
+Maker 
+Account Taker 
+Account 
+DEX
+Token A Token B 
+Ethereum Blockchain Network Transport Layer 
+713 4
+2
+56
+Figure 2: O-chain order relay, on-chain settlement diagram. Gray rectangles and circles represent
+Ethereum smart contracts and accounts, respectively. Arrows pointing to Ethereum smart contracts
+represent function calls; arrows are directed from the caller to the callee. Smart contracts can call func-
+tions within other smart contracts. Arrows external to the Ethereum blockchain represent information
+ow.
+1. Maker approves the decentralized exchange (DEX) contract to access their balance of Token A2.
+2. Maker creates an order to exchange Token A for Token B, specifying a desired exchange rate,
+expiration time (beyond which the order cannot be lled), and signs the order with their private
+key.
+3. Maker broadcasts the order over any arbitrary communication medium.
+4. Taker intercepts the order and decides that they would like to ll it.
+5. Taker approves the DEX contract to access their balance of Token B.
+6. Taker submits the makers signed order to the DEX contract.
+7. The DEX contract authenticates makers signature, veries that the order has not expired, veries
+that the order has not already been lled, then transfers tokens between the two parties at the
+specied exchange rate.
+2See ERC20 Token in Appendix. It is possible to provide approval once and execute an unlimited number of trades
+thereafter. Alternatively, one can provide approval prior to - and limited to the value of - each individual trade.
+53.1 Message Format
+Each order is a data packet containing order parameters and an associated signature. Order parameters
+are concatenated and hashed to 32 bytes via the Keccak SHA3 function. The order originator signs the
+order hash with their private key to produce an ECDSA signature.
+3.1.1 Point-to-point Orders
+Point-to-point orders allow two parties to directly exchange tokens between each other using just about
+any communication medium they prefer to relay messages. The packet of data that makes up the order
+is a few hundred bytes of hex that may be sent through email, a Facebook message, whisper or any
+similar service. The order can only be lled by the specied taker address, rendering the order useless
+for eavesdroppers or outside parties.
+Table 1: Message format for point-to-point orders.
+Name Data Type Description
+version addressAddress of the Exchange smart contract.
+This address will change each time the protocol is updated.
+maker address Address originating the order.
+taker address Address permitted to ll the order.
+tokenA address Address of an ERC20 Token contract.
+tokenB address Address of an ERC20 Token contract.
+valueA uint256 Total units of tokenA oered by maker.
+valueB uint256 Total units of tokenB requested by maker.
+expiration uint256 Time at which the order expires (seconds since unix epoch).
+v uint8 ECDSA signature of the above arguments.
+r bytes32
+s bytes32
+63.1.2 Broadcast Orders
+For liquid markets to emerge, there must be public locations where buyers and sellers may post orders
+that are subsequently aggregated into order books i.e. exchanges. Building and operating an exchange
+is costly and the protocol we have described so far does not provide an incentive for someone to take on
+such an expense. Broadcast orders solve this issue by allowing anyone to act as an exchange, maintain an
+order book (public or private) and charge transaction fees on all resulting liquidity. We refer to entities
+that host and maintain an order book as Relayers rather than exchanges. Where an exchange must build
+and operate proprietary infrastructure, execute trades and handle user funds, Relayers merely facilitate
+signalling between market participants by hosting and propagating an order book that consists of generic
+messages. Relayers do not execute trades on behalf of market participants as this would require market
+participants to trust the Relayer. Instead, Takers execute their own trades.
+The message format for broadcast orders includes two changes to the point-to-point message format
+to facilitate public exchange and incentivize Relayers. First, broadcast orders do not specify a taker
+address, allowing a broadcast order to be lled by anyone that happens to intercept it. Second, broadcast
+orders include feeA ,feeB , and feeRecipient parameters which specify transaction fee values and an
+address used by a Relayer to collect transaction fees. The exchange smart contract transfers these fees
+tofeeRecipient if and when an order is lled. Figure 3 presents the sequence of steps Makers and
+Relayers use to negotiate transaction fees in a trustless way.
+Maker 
+Relayer Order 
+Book 
+21 5
+Takers 
+34
+Ethereum Blockchain 6
+Figure 3: Relayers host and maintain an o-chain order book in exchange for transaction fees. This
+diagram illustrates o-chain order relay and the sequence of steps used by Makers and Relayers to
+negotiate transaction fees in a trustless way. Transaction fees are moved from the Maker and/or Taker
+to the Relayer upon settlement of a trade, extending the on-chain settlement process shown in Figure 2.
+1. Relayer cites a fee schedule and the address they use to collect transaction fees.
+2. Maker creates an order, setting feeA andfeeB to values that satisfy Relayer's fee schedule, setting
+feeRecipient to Relayer's desired recieving address and signs the order with their private key.
+3. Maker transmits the signed order to Relayer.
+4. Relayer receives the order, checks that the order is valid and that it provides the required fees. If
+the order is invalid or does not meet Relayer's requirements, the order is rejected. If the order is
+satisfactory, Relayer posts the order to their order book.
+5. Takers recieve an updated version of the order book that includes Maker's order.
+6. Taker lls Maker's order by submitting it to the exchange contract on the Ethereum blockchain.
+7Table 2: Message format for broadcast orders.
+Name Data Type Description
+version address Address of the Exchange smart contract.
+maker address Address originating the order.
+tokenA address Address of an ERC20 Token contract.
+tokenB address Address of an ERC20 Token contract.
+valueA uint256 Total units of tokenA oered by maker.
+valueB uint256 Total units of tokenB requested by maker.
+expiration uint256 Time at which the order expires (seconds since unix epoch).
+feeRecipient address Address of a Relayer. Receives transaction fees.
+feeA uint256 Total units of protocol token Maker pays to feeRecipient.
+feeB uint256 Total units of protocol token Taker pays to feeRecipient.
+v uint8 ECDSA signature of the above arguments.
+r bytes32
+s bytes32
+While it may seem odd that the Maker is specifying the transaction fees, keep in mind that Relayers
+ultimately have control over which orders get posted. Therefore, if the Maker wants their order to be
+posted to a specic order book, they must set feeA ,feeB , and feeRecipient to values that satisfy the
+Relayer associated with that order book. Since fees are negotiated o-chain, Relayers may change a
+fee schedule dynamically and at their own discretion (for incoming orders that haven't been signed yet,
+not for existing orders). Relayers may use information that is available on-chain or o-chain in setting
+and adjusting fees, allowing for exible fee schedules (at fees, percentage based, volume based, tiered,
+subscription models, etc). However, once the Relayer has accepted an order onto their order book, the
+order's fee values cannot be changed.
+Conventional exchange services use a matching engine to ll market orders on behalf of their users and
+users must trust that the exchange will provide them with the best available price. Generally, users can
+feel assured that these regulated entities will be held accountable if they attempt to cheat or in the event
+that a matching engine malfunctions. For 0x protocol to remain trustless, Relayers cannot be given the
+ability to execute trades on behalf of Makers and Takers. Instead, Relayers can only recommend a best
+available price to Takers who must then independently decide to sign and send the transaction to the
+blockchain. This means that 0x protocol cannot support true market orders, however, a well designed
+web application can approximate this type of user experience.
+It is important to recognize that the feeRecipient address can point to any arbitrary smart contract.
+This means that complex Relayer incentive structures can be \plugged in" to 0x protocol. For example, a
+feeRecipient contract could be designed to split transaction fees between multiple Relayers or distribute
+transaction fees across a swarm of nodes according to the level of contribution each node makes in
+propagating an order book within a censorship-resistant p2p network3.
+3Development of a low-latency relay protocol that supports a fully distributed order book is being considered for the
+next phase of this project.
+83.2 Smart Contract
+The exchange protocol is implemented within an Ethereum smart contract that is publicly accessible
+and free to use (no additional costs are imposed on users beyond standard gas costs). It is written in the
+Solidity programming language and contains two relatively simple functions: ll and cancel. The entire
+contract is approximately 100 lines of code and it costs approximately 90k gas to ll an order.
+3.2.1 Signature Authentication
+The exchange smart contract is able to authenticate the order originator's (Maker's) signature using the
+ecrecover function, which takes a hash and a signature of the hash as arguments and returns the public
+key that produced the signature. If the public key returned by ecrecover is equal to the maker address,
+the signature is authentic.
+address publicKey = ecrecover( hash, signature( hash ) );
+if ( publicKey != maker ) throw;
+3.2.2 Fills & Partial Fills
+The exchange smart contract stores a reference to each previously lled order to prevent a single order
+from being lled multiple times. These references are stored within a mapping; a data structure that, in
+this case, maps a 32 byte chunk of data to a 256 bit unsigned integer. Passing the parameters associated
+with an order into the Keccak SHA3 function produces a unique 32 byte hash that may be used to
+uniquely identify that order (the odds of a hash collision, nding two dierent orders with an identical
+hash, are practically zero). Each time an order is lled, the mapping stores the order hash and the
+cumulative value lled.
+A Taker may partially ll an order by specifying an additional argument, valueFill , when calling the
+exchange smart contract's ll function. Multiple partial lls may be executed on a single order so long
+as the sum of the partial lls does not exceed the total value of the order.
+Table 3: Takers must provide an additional argument when attempting to ll an order.
+Name Data Type Description
+valueFill uint256 Total units of tokenA to be lled ( valueFillvalueA ).
+93.2.3 Expiration Time
+An order's expiration time is specied by the Maker at the time the order is signed. The expiration time
+is an unsigned integer value that represents the absolute number of seconds since the unix epoch. This
+value cannot be changed once it has been signed.
+Time within the Ethereum virtual machine is given by block timestamps that are set each time a new
+block is mined. Therefore, the expiration status of an order does not depend upon the time at which
+a Taker broadcasts their intention to ll an order, instead it depends upon the time at which the ll
+function is being executed in the EVM by a miner. A miner cannot set the block timestamp of the
+current block to be earlier than the timestamp of the previous block.
+3.2.4 Cancelling Orders
+An unlled and unexpired order may be cancelled by the associated Maker via the exchange smart
+contract's cancel function. The cancel function maps an order's hash to the order's maximum value
+(valueA ), preventing subsequent lls. Cancelling an order costs gas and, therefore, the cancel function
+is only intended to serve as a fallback mechanism. Typically, Makers are expected to avoid on-chain
+transactions by setting their order expiration times to match the frequency with which they intend to
+update their orders.
+One issue with this approach is that it can create situations where a Maker attempts to cancel their
+order at roughly the same time a Taker is attempting to ll that same order. One of the two parties
+transactions will fail, wasting gas, depending upon the sequence in which the two transactions are mined.
+Uncertainty regarding the sequence in which transactions are mined could lead to undesirable outcomes
+at times. This uncertainty could increase if the Ethereum blockchain were to experience a signicant
+backlog of pending transactions.
+104 Protocol Token
+Cryptoeconomic protocols create nancial incentives that drive a network of rational economic agents
+to coordinate their behavior towards the completion of a process [4,17,18]. While 0x is fundamentally a
+network protocol used to facilitate signalling between buyers and sellers (rather than a cryptoeconomic
+protocol), it is intended to serve as an open standard for dApps that incorporate exchange functionality.
+Establishing and maintaining an open standard is a coordination problem that adds operational overhead
+for all contributing parties; coordination can be especially challenging when each party has dierent needs
+and nancial incentives. Protocol tokens can align nancial incentives and oset costs associated with
+organizing multiple parties around a single technical standard. While aligning incentives around adoption
+is useful, protocol tokens can be used to address a much more challenging issue: future-proong a protocol
+implemented within an immutable system of smart contracts via decentralized governance.
+4.1 Decentralized Governance
+4.1.1 Continuous Integration
+Once an Ethereum smart contract is deployed to the blockchain its internal logic can't be changed.
+Therefore, to update a protocol one must deploy a completely new smart contract that either forks the
+network or disrupts users and processes that depend on the protocol until they \opt-in" to the newest
+version. In the context of exchange, a disruptive protocol update could invalidate all open orders and
+require each market participant to approve a new smart contract to access their trading balances. Alter-
+natively, the protocol could fork into two versions that operate in parallel, neutralizing network eects
+created by dApp interoperability. While smart contract abstraction may be used to continuously inte-
+grate updates into a protocol without disrupting higher-level processes, such an update mechanism can
+also create signicant security risks for end users (in the worst case, an attacker could gain access to user
+funds). Protocol tokens may be used to drive a decentralized update mechanism that allows for continu-
+ous integration of updates into the protocol while also protecting the protocol's users and stakeholders.
+0x will be deployed to the Ethereum blockchain with a xed supply of protocol tokens that will be issued
+to partnering dApps and future end users. Protocol tokens will have two uses: for market participants to
+pay transaction fees to Relayers and for decentralized governance over updates to the protocol. Decen-
+tralized governance will be used to securely integrate updates into 0x protocol according to the process
+shown in Figure 4. Initially, a simple multi-signature contract will be used for decentralized governance
+until a more sophisticated DAO is developed. 0x protocol and its native token will not impose unecessary
+costs on users, seek rent or extract value from Relayers. The protocol's smart contracts will be publicly
+accessible and completely free to use. No mechanisms will be put in place to benet one group at the
+expense of another.
+11Proxy DAO 
+Token A 
+Token N Ethereum Blockchain 
+dApp 1 
+dApp n End Users DEX v1 DEX v2 
+Stakeholders 
+Figure 4: Protocol updates may be deployed without disrupting the network through a combination
+of contract abstraction and decentralized governance. End users provide a Proxy contract with access
+to the tokens they plan on trading. Stakeholders propose and elect protocol improvements that are
+implemented within entirely new smart contracts (DEX v2) via a DAO. The DAO authorizes new smart
+contract(s) to access user tokens by adding them to the Proxy contract's whitelist and eventually unlists
+deprecated versions of the protocol.
+4.1.2 Token Registry
+Orders consist of hexadecimal bytecode that is machine-readable but that isn't necessarily easy for a
+human to visually interpret. A Token Registry4contract will be used to store a list of ERC20 tokens
+with associated metadata for each token: name, symbol, contract address, and the number of decimal
+places needed to represent a token's smallest unit (needed to determine exchange rates). The registry
+will serve as an ocial on-chain reference that may be used by market participants to independently
+verify token addresses and exchange rates before executing a trade. Since the Token Registry will serve
+as trusted source of information, oversight will be required to add, modify or remove tokens from the
+registry. 0x stakeholders will provide this oversight. While the Token Registry will make it easy for users
+to verify the integrity of their orders, 0x protocol can be used to trade any token that uses the ERC20
+token interface.
+In the future, the protocol's order format can be modied to facilitate human-readability. Tokens may be
+identied by a three character symbol registered in the Token Registry rather than by the token's contract
+address. The Ethereum Name Service (ENS) can be used to identify Makers, Takers and Relayers by
+human-readable names, such as \theDunkle.eth", rather than by an account or contract address.
+4https://github.com/ethereum/EIPs/issues/22
+125 Summary
+O-chain order relay + on-chain settlement = low friction costs for market makers + fast settlement.
+Publicly accessible smart contracts that any dApp can hook into.
+Relayers can create their own liquidity pools and charge transaction fees on volume.
+Standardization + decoupling = Shared protocol layer !
+{provides interoperability between dApps
+{creates network eects around liquidity that are mutually benecial
+{reduces barriers-to-entry, driving down costs for market participants
+{eliminates redundancy, improves user experience and smart contract security
+Decentralized update mechanism allows improvements to be continuously and safely integrated into
+the protocol without disrupting dApps or end users.
+136 Acknowledgements
+We would like to express our gratitude to our mentors, advisors and to the many people in the Ethereum
+community that have been so welcoming and generous with their knowledge. In particular, we would
+like to thank Joey Krug, Linda Xie and Fred Ehrsam for reviewing, editing and providing feedback on
+this work. We would also like to thank the organizers and community members that we've met at the
+Silicon Valley Ethereum Meetup including Joseph Chow, Martin Koppelmann, Rebecca Migirov, Gustav
+Simonsson, Grant Hummer, Tom Ding and the String Labs folks and many others.
+147 Appendix
+7.1 ERC20 Token
+ERC20 establishes a standard contract ABI for tokens on the Ethereum blockchain and has become the
+de facto representation for all types of digital assets. ERC20 tokens share the same contract interface,
+simplifying integration with external contracts.
+Core ERC20 functions include:
+transfer(to, value)
+balanceOf(owner)
+approve(spender, value)
+allowance(owner, spender)
+transferFrom(from, to, value)
+EIP101 includes a proposal to change ether to follow the ERC20 token standard. For now, a \wrapper"
+smart contract may be used as a proxy for ERC20 ether. For reference, see the Maker implementation
+or the Gnosis implementation.
+7.2 Contract ABI
+EIP50 proposes an extension to the contract ABI to support structs. This would allow the commu-
+nity to establish standard Order andSignature data structures, simplifying our contract interface and
+integrations with external contracts.
+7.3 Ethereum Name Service
+EIP137 or Ethereum Name Service (ENS) will be used to resolve human-readable names, such as \my-
+name.eth," into machine-readable identiers that may represent Ethereum addresses, Swarm and/or
+IPFS content hashes or other identiers. It can also be used to associate metadata with names, such as
+contract ABIs or whois information. ENS will be used by 0x protocol to create more intuitive message
+formats that optionally reference Makers, Takers and Relayers by name.
+15References
+[1] coinmarketcap. https://coinmarketcap.com/all/views/all/. Accessed: 2017-02-016.
+[2] Wikipedia: Mt. Gox. https://en.wikipedia.org/wiki/Mt.Gox. Accessed: 2017-02-016.
+[3] A Timeline: ShapeShift Hacking Incident. https://info.shapeshift.io/blog/2016/04/19/timeline-
+shapeshift-hacking-incident. Accessed: 2017-02-016.
+[4] Will Warren. The dierence between App Coins and Protocol Tokens.
+https://medium.com/@willwarren89, 2017.
+[5] Maker Market. https://mkr.market/. Accessed: 2017-02-01.
+[6] EtherOpt. https://etheropt.github.io/. Accessed: 2017-02-01.
+[7] Augur. https://augur-dev.rebaseapp.com/. Accessed: 2017-02-01.
+[8] Intrinsically Tradable Tokens. https://www.reddit.com/r/ethereum/... Accessed: 2017-02-01.
+[9] Euler. https://www.reddit.com/r/ethereum/... Accessed: 2017-02-01.
+[10] Galia Benartzi Guy Benartzi, Eyal Hertzog. Bancor protocol: A hierarchical monetary system and
+the foundation of a global decentralized autonomous exchange. 2017.
+[11] Abraham Othman, David M Pennock, Daniel M Reeves, and Tuomas Sandholm. A practical
+liquidity-sensitive automated market maker. ACM Transactions on Economics and Computation ,
+1(3):14, 2013.
+[12] RaidEX. http://www.raidex.io/. Accessed: 2017-02-014.
+[13] Je Coleman. State Channels. http://www.jecoleman.ca/state-channels/. Accessed: 2017-02-014.
+[14] Ledger Labs: State Channels Wiki. https://github.com/ledgerlabs/state-channels/wiki. Accessed:
+2017-02-014.
+[15] IDEX, Decentralized Capital. http://www.idex.market/. Accessed: 2017-02-01.
+[16] EtherDelta. https://etherdelta.github.io/. Accessed: 2017-02-01.
+[17] Fred Ehrsam. App Coins and the dawn of the Decentralized Business Model.
+https://blog.coinbase.com, 2016.
+[18] Fred Ehrsam. How to Raise Money on a Blockchain with a Token. https://blog.gdax.com, 2016.
+16
+Aave: Protocol Whitepaper
+V2.0
+wow@aave.com
+December 2020
+Abstract
+This document describes the denitions and theory behind the Aave Protocol V2, including how it improves
+V1, new features and dierent aspects of the implementation.Contents
+1 Introduction 1
+2 Architectural Specications 2
+3 Features Specications 3
+3.1 aTokens . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+3.2 Debt Tokenization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+3.3 Variable Debt . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+3.4 Stable Debt . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.5 Flash Loans V2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3.6 Collateral trading . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3.7 Repay with collateral . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3.8 Credit Delegation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+4 Gas optimisation and improvements 8
+4.1 Implementation of the powfunction . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.2 Removing SafeMath from WadRayMath andPercentageMath . . . . . . . . . . . . . . . . . . . . . . . 8
+4.3 Mapping users' loans/deposits with a bitmask . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 8
+4.4 Reserve conguration with a bitmask . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+5 Formal Denitions 101 Introduction
+The Aave Protocol marks a shift from a decentralised P2P lending strategy (direct loan relationship between lenders
+and borrowers, like in ETHLend) to a pool-based strategy. Loans do not need to be individually matched, instead
+they rely on the pooled funds, as well as the amounts borrowed and their collateral. This enables instant loans with
+characteristics based on the state of the pool.
+The following paper describes the key functionalities that dierentiate the Aave Protocol V2 from V1. The main
+driver for the development of Aave V2 was to improve the sub-optimal solutions implemented in V1, precisely:
+•Inability to upgrade the aTokens
+•Gas ineciency
+•Architecture simplication favoring automated testing through fuzzers and formal verication tools
+•Code simplication
+Some of the solutions currently implemented in V1 were designed and developed when the Ethereum Network was
+notably dierent. The exponential growth of DeFi has grown the number of transactions twofold, with further
+pressure from increased gas costs due to the Istanbul release.
+Moreover, Aave V2 oers the following new features:
+1.Debt Tokenisation. The borrowers debt is now represented by tokens instead of internal accounting within
+the contract, enabling:
+•Code simplication with regards to the borrowing aspect of the protocol - some of the calculations are
+now implicit to the minting/burning logic of the debt tokens.
+•Simultaneous borrows with variable and multiple stable rates. In V1, borrowers' loans are either variable
+or stable with previous borrows automatically switched to the latest loan rate. In V2, users can hold
+multiple loans combining variable and multiple stable rate positions. Multiple stable rate positions are
+handled through the weighted average of the rates of the stable rate loans being taken.
+•Native credit delegation - through the concept of delegation, users can delegate to other addresses by
+opening a credit line. Some interesting tools can be developed on top, for example:
+{Borrow from a cold wallet - users can keep their collateral in cold wallets, simply delegating their
+credit to a hot wallet to borrow. The whole position can be managed from the hot wallet, with
+borrow, repay and add more collateral; while funds are kept under the safety of a cold wallet.
+{Credit delegation facilities - users can take undercollateralised loans as long as they receive delegation
+from other users that provide collateral.
+{Automated yield farming - credit delegation makes it possible to build tools to to automatically open
+credit lines to farm yields on multiple protocols.
+2.Flash Loans V2. Flash Loans are a disruptive functionality of Aave V1, which allow the creation of a variety
+of tools to renance, collateral swap, arbitrage and liquidate. Flash Loans have become a powerful mechanism
+of DeFi. In the initial V1 Flash Loan, a signicant limitation is that it cannot be used within Aave. Aave V2
+implements a solution to enable Flash Loans usage in combination with any of the other functionalities of the
+protocol, powering many new possibilities:
+{Collateral trading. Change the exposure from one/multiple collaterals to another, without the need of
+closing the debt positions.
+{ Repay a loan with the collateral. Use collateral deposit in the protocol to repay a debt position.
+{ Margin trading. Creation of margin positions that can be used for trading later on.
+{ Debt swap. Change the debt exposure from one asset to another.
+{ Margin deposits
+12 Architectural Specications
+The diagram bellow describes the high level architecture of Aave V2:
+Figure 1: Aave V2 Protocol Architecture
+Some major architectural dierences distinguish V2 in Figure 1 from the compartimented structure of V1 in Figure 2:
+1.Funds that were previously stored in the LendingPoolCore contract are now stored within each specic aToken.
+This gives the protocol better segregation between assets, which favors the implementation of yield farming
+aware aTokens.
+2.LendingPoolCore and LendingPoolDataProvider have been removed and replaced with libraries. This
+reduced the gas footprint of all the actions by 15 to 20% while optimising the code complexity and verbosity.
+3.All actions now happen through LendingPool ; replacing the previously required redeem() on every single
+aToken.
+4. Debt tokens track users debt.
+2Figure 2: Aave V1 Protocol Architecture
+3 Features Specications
+3.1 aTokens
+V2 aTokens bring the following updates:
+•Support of the EIP-2612
+•No interest rate redirection in the base aToken implementation - this may be reintroduced in the future
+The following denitions from V1 hold true in V2:
+•LRasset
+t, the current liquidity rate.
+A function of the overall borrow rate and the utilisation rate LRt=RtUt
+•LIt, cumulated liquidity index.
+Interest cumulated by the reserve during the time interval  T, updated whenever a borrow, deposit, repay,
+redeem, swap, liquidation event occurs.
+LIt= (LRtTyear+ 1)LIt 1
+LI0= 11027= 1ray
+•NIt, reserve normalised income.
+Ongoing interest cumulated by the reserve NIt= (LRtTyear+ 1)LIt 1
+3In V1,NItwas stored as user xindexNI(x) after each action, and for a user x, the cumulated aToken balance was
+calculated as follows:
+CBt(x) =PB(x)
+NI(x)tItwithPB(x) the principal balance of user x
+In V2, the user index factually disappears as a storage variable, and is stored together with the principal balance as
+a ratio that is called Scaled Balance ,ScB. The balance of the user is calculated leading to increase or decrease on
+every action resulting in the mint or burn of aTokens:
+•Deposits. When a user deposits an amount min the protocol, his scaled balance updates as follows:
+ScBt(x) =ScBt 1(x) +m
+NIt
+•Withdrawals. When a user withdraws an amount min the protocol, his scaled balance updates as follows:
+ScBt(x) =ScBt 1(x) m
+NIt
+At any point in time, the aToken balance of a user can be written as:
+aBt(x) =ScBt(x)NIt
+3.2 Debt Tokenization
+The total supply of debt token including debt accrued per second is dened as follows:
+dSt=P
+i2usersScBt(i) withScBt(i) the amount borrowed by each user i
+The total debt on an asset at time t is dened by:
+Dasset
+t =SDt+VDtwithSDthe stable debt token supply and VDthe variable
+This denition replaces the total stable or variable borrows of V1, described in section 1.2 of the V1 Whitepaper.
+3.3 Variable Debt
+The V1 Whitepaper introduces the following denition that hold true for V2:
+•VIasset
+t, the cumulated variable borrow index.
+Interest cumulated by the variable borrows VBduring a time  T, at variable rate VR, updated whenever a
+borrow, deposit, repay, redeem, swap, liquidation event occurs.
+VIt= (1 +VRt
+Tyear)TVIt 1
+•VI(x), user cumulated variable borrow index
+Variable borrow index of the specic user, stored when a user opens a variable borrow position.//
+VI(x) =VIt(x)
+•PB(x), user principal borrow balance
+Balance stored when a user opens a borrow position. In case of multiple borrows, the compounded interest is
+cumulated each time and it becomes the new principal borrow balance.
+In V2 the debt tokens follow the same ever increasing logic as the aTokens of V1. The variable debt token follow the
+scaled balance approach. The concept of a normalised variable (cumulated) debt has been introduced:
+VNt= (1 +VRt
+Tyear)TVIt 1
+WithScVBt(x) the scaled balance of a user xat timet,mthe transaction amount, VNtthe normalised variable
+debt:
+•Borrows. When a user xborrows an amount mfrom the protocol the scaled balance updates
+4ScVBt(x) =ScVBt 1(x) +m
+VNt
+•Repays/Liquidations. When a user xrepays or gets liquidated an amount mthe scaled balance updates
+ScVBt(x) =ScVBt 1(x) m
+VNt
+At any point in time, the total variable debt balance of a user can be written as:
+VD(x) =ScVB (x)Dt
+This variable debt token balance replaces the user variable borrow balance of V1, described in section 1.2 of the the
+V1 Whitepaper.
+3.4 Stable Debt
+For the stable rate debt, the following V1 denition holds true:
+•SRasset
+t, overall stable rate
+{ When a stable borrow of amount SBnewis issued at rate SRt:SRt=SDtSRt 1+SBnewSRt
+SDt+SBnew
+{ When a user xrepays stable borrow ifor an amount SBi(x) at stable rate SRi(x):
+SRt=(
+0, ifSDt SB(x) = 0
+SDtSRt 1 SB(x)SR(x)
+SDt SBx, ifSDt SBx>0
+SRtis stored in the stable rate token for each specic currency. The stable debt token SD(x)balance for
+a userxis dened as follows:
+SD(x) =SB(x)(1 +SRt
+Tyear ))T
+In V1,SR(x), the stable rate of user x, is always equal to the stable rate of the last loan taken, with previous
+loans rebalancing upon new loans. From V2, the stable rate SR(x) is calculated per asset reserve across the i
+stable loans:
+SR(x) =P
+iSRi(x)SDi(x)
+SDi(x)
+3.5 Flash Loans V2
+The owchart Figure 3 describes V1 Flash Loans. The check if funds have been transferred is performed in the
+steps:
+1.Before transferring the funds to the executor U, the protocol takes a snapshot of the balance of the
+Flash-Loaned asset
+2.At the end of the Flash Loan, a check enforces that the balance of the contract includes the Flash
+borrowed amount plus the Flash Loan premium. If the amount is incorrect, the transaction is reverted.
+This limits the use of Flash Loans within Aave, as allowing other actions (especially deposits, repayments and
+liquidations) might expose the protocol to the risk of reentrancy. These actions are therefore mutexed by a
+reentrancy guard mechanism.
+V2 oers a novel protection against reentrancy, allowing to use Flash Loans for all Aave transactions.
+Solution
+The initial implementation was chosen for a specic ETH codepath; unfortunately ETH does not support pull
+payment strategy. In this new version 2, all the ETH-specic code has been removed, resulting in the following
+changes:
+5Figure 3: Aave V1 Flash Loan
+1. The Flash Loan initiates with the transfer of funds to the Flash Loan executor u,
+2.At the end, funds are pulled back from the executor ufor an amount equal to the borrowed funds plus
+the fee. If pulling the funds does not succeed, the Flash Loan fails; for example, when there is lack of
+approval for the funds or lack of funds to cover the debt.
+This technically removes the need to snapshot the balances before and after, therefore removing the need for
+reentrancy check.
+Additionally, Flash Loans now support multiple modes: the Flash Loan caller may decide to keep the loan
+open, subject to appropriate liquidity to cover collateral requirements.
+3.6 Collateral trading
+The Aave protocol V2 oers a way of swapping assets deposited, both used as collateral or not. This is achieved
+by leveraging the v2 Flash Loans in the following way:
+{The flashLoan() function is called by the user, passing as parameters the address of a receiver contract,
+implementing the IFlashLoanReceiver interface, which is an untrusted contract that should be veri-
+ed by the user in advance; a list of underlying assets to swap from, a list of amounts of those assets and
+one extra parameter containing the asset to swap to and the max slippage chosen by the user, both encoded.
+6{The receiver contract will then use the funds received to swap them to the destination asset, depositing
+again on behalf of the user and withdrawing the user's deposits in the Flashed-currencies in order to
+repay the Flash Loan.
+One example would be:
+(i)An user has 100 LINK and 20 UNI deposited in the protocol, with a debt of 100 USDC. He wants to
+swap both his deposited LINK and UNI to AAVE, without needing to pay back any debt within one
+transaction.
+(ii)The user calls the flashLoan() function passing as parameters the address of the receiver contract which
+contains the logic to do the operation, the addresses of LINK and UNI; 100 and 200 as amounts and,
+encoded, the address of the asset to swap to (AAVE) and 2% as maximum slippage on the trades.
+(iii) The receiver contract will swap the indicated amounts of LINK and UNI to AAVE, by using a decentralised
+exchange.
+(iii) The receiver contract will deposit the resultant AAVE on behalf of the user in the Aave Protocol.
+(iv) The receiver contract will transfer the equivalent Flashed amount in aLINK and aUNI from the user, will
+redeem them to LINK and UNI and will approve the pool to pull those funds at the end of the Flash
+Loan to repay.
+3.7 Repay with collateral
+Also built by using Flash Loans v2, this feature allows for an user with one or multiple assets deposited
+as collateral in the protocol, to use them to repay partially or totally his debt/s positions. Same as with
+Swap Liquidity and, in general all the features based on Flash Loans, the repayment with collateral uses
+theflashLoan() function and a receiver contract, implementing the IFlashLoanReceiver interface. To this
+receiver is passed a list collateral assets to ash and use to swap and repay, a list of amounts of those assets,
+and, encoded, a list of the asset to repay debt, a list of debt amounts to repay, and a list with the borrow
+modes (stable or variable) for each debt asset. It's important to note that, in this case, the receiver contract
+will expect to receive an exact amount of how much needs to be repaid , dierently to Swap Liquidity ,
+where the amount expected is the exact collateral to swap. The ow on this feature would be:
+(i)An user has 100 AAVE deposited in the protocol, and a debt of 200 USDC at variable rate. As he doesn't
+have at the moment USDC funds available to repay his loan, he wants to swap part of his AAVE collateral
+to USDC and use it for the repayment.
+(ii)The user calls the flashLoan() function passing as parameters: the address of the receiver contract which
+contains the logic to do the operation, the address of AAVE, 7 as collateral amount to swap (estimated
+AAVE needed to cover the 200 USDC debt), 200 as debt amount to repay and variable as borrow mode
+used.
+(iii) The receiver contract will swap the 7 AAVE to USDC by using a decentralised exchange.
+(iv) The receiver contract will use the resultant USDC from the swap to repay on behalf of the user his USDC
+debt in the protocol.
+(iv)Once the debt is repaid, the receiver will transfer the amount of aAAVE needed to return the ashed
+AAVE from the user, will redeem it for AAVE, and will approve the pool to pull those funds at the end
+of the Flash Loan transaction.
+(v)If at the end there are any leftovers of the 7 AAVE as result of the swap, these funds will be deposited
+back in the protocol on behalf of the user or sent directly to his wallet.
+3.8 Credit Delegation
+On top of debt tokenisation, V2 supports credit delegation: the borrow() function supports credit lines to
+dierent addresses, without the need for collateral, as long as the caller address as been granted the allowance.
+This functionality is implemented through the function approveDelegation() on each debt token. Users will
+be able to draw up to their allowance for the specic debt mode (stable or variable). The borrow() function
+7has an onBehalfOf parameter for the caller to specify the address used to draw credit.
+The implementation of credit delegation required some trade-os:
+{A delegator can delegate credit to multiple entities but a delegatee can only draw credit from a single
+delegator at once. One cannot aggregate the delegators debt in a single borrow()
+{A delegator can simultaneously delegate stable and variable credit to an entity, but a delegatee cannot
+draw variable and stable credit from a single borrow()
+4 Gas optimisation and improvements
+4.1 Implementation of the powfunction
+In the initial release, the calculation of compounded interest relied on the exponential formula implemented
+with the Babylonian method, resulting in more time consuming and expensive execution.
+The V2 release, optimises execution costs by approximating this exponential formula with a binomial expansion,
+which works well with a small base. The implementation used the following binomial expansion:
+(1 +x)= 1 +x+1
+2( 1)x2+1
+6( 1)( 2)x3+1
+24( 1)( 2)( 3)x4+:::
+The function calculateCompoundedInterest, (MathUtils.sol line 46) implements the rst three expan-
+sions which gives a good approximation of the compounded interest for up to a 5 year loan duration. This
+results in a slight underpayment oset by the gas optimisation benets.
+It's important to note that this behaves a little dierently for variable and stable borrowing:
+{ For variable borrows, interests are accrued on any action of any borrower;
+{For stable borrows, interests are accrued only when a specic borrower performs an action, increasing the
+impact of the approximation. Still, the dierence seems reasonable given the savings in the cost of the
+transaction.
+4.2 Removing SafeMath from WadRayMath and PercentageMath
+The V1 WadRayMath library internally uses SafeMath to guarantee the integrity of operations. After an in
+depth analysis, SafeMath incurred intensive high costs in critical areas of the protocol, with a 30 gas fee for
+each call. This supported the refactoring of WadRayMath to remove SafeMath , which saves 10-15k gas on some
+operations.
+4.3 Mapping users' loans/deposits with a bitmask
+In the initial V1 release, the protocol loops through all the active assets to identify the user deposits
+and loans. This would result in high gas consumption and reduced scalability - as the cost of withdraw-
+ing/borrowing/repaying/liquidating assets would increase as more assets are listed on the protocol. Two
+improvement ideas where considered:
+1.For each user, keep a list of assets being used as collateral/borrowed, updated whenever a user de-
+posits/withdraws/borrows/repays. When calculating the total system collateral, rather than looping
+through all the supported assets, the function calculateUserAccountData() could target specic user's
+assets.
+This solution doesn't present any limitations, though it is more gas intensive - when considering costs of
+removing items from the list, checking each aToken balance, stable or variable debt, whether a user is
+depositing, borrowing or both...
+8Figure 4: Users Collaterals/Borrows Bitmask Structure
+2.Create a bitmask with the structure gure 4. The bitmask has a 256 bit size, it is divided in pairs of
+bits, one for each asset. The rst bit of the pair indicates if an asset is used as collateral by the user, the
+second whether an asset is borrowed by the user. This implementation imposes the constraints:
+{ Only 128 assets can be supported, to add more, another uint256 needs to be used.
+{ For the calculation of the account data, the protocol would still need to query all listed assets.
+It presents the following advantages compared to a list based solution:
+{ Additional assets cost only 5k gas, instead of 20k gas for writing on the list
+{Extremely cheap verication of a user's asset borrowing (with 0xAAAAA...!=0 ) or depositing
+(configuration=0 )
+{Immediate access to what assets are being deposited/borrowed/both - by fetching the aTokens/debt
+tokens balances
+{IncalculateUserAccountData() , the conguration can be cached at the beginning and used to
+perform all the calculations, which greatly saves on SLOADs.
+Both solutions were implemented and tested, the second solution was preferred since the 128 asset limitation
+provides space for growth, and more so in light of Aave's multimarkets.
+4.4 Reserve conguration with a bitmask
+Abitmask has also been introduced to store the reserve conguration, dened in Figure 5. A similar packing
+could have been achieved by using uint32 andbooleans , the bitmask benets from more gas eciency, and
+more so when updating multiple congurations at once.
+Figure 5: Reserve Bitmask Structure
+95 Formal Denitions
+Variable Description
+T, current times-
+tampCurrent number of seconds dened by block.timestamp .
+Tl, last updated
+timestampTimestamp of the last update of the reserve data. Tlis updated every time a
+borrow, deposit, redeem, repay, swap or liquidation event occurs.
+T, delta time T=T Tl
+Tyear, seconds Number of seconds in a year. Tyear= 31536000
+Tyear, yearly pe-
+riodTyear=T
+Tyear
+Lasset
+t, total liquidity
+of an assetTotal amount of liquidity available in the assets reserve. The decimals of this value
+depend on the decimals of the currency.
+SDasset
+t, total stable
+debt tokenTotal amount of liquidity borrowed at a stable rate represented in debt tokens.
+VDasset
+t, total vari-
+able debt tokensTotal amount of liquidity borrowed at a variable rate represented in debt tokens.
+Dasset
+t, total debt Total amount of liquidity borrowed. Dasset
+t =VDasset
+t +SDasset
+t
+Uasset
+t, utilisation
+rateThe utilisation of the deposited funds. Uasset
+t =8
+>><
+>>:0, ifLasset
+t = 0
+Dasset
+t
+Lasset
+t, ifLasset
+t>0
+Uasset
+optimal , target utili-
+sation rateThe utilisation rate targeted by asset reserve, beyond the interest rates rise
+sharply.
+#Rasset
+base, base bor-
+row rateConstant for Basset
+t = 0.VRfor variable rate SR
+for stable.Expressed in ray.
+#Rasset
+slope 1, interest
+rate slope below
+UoptimalConstant representing the scaling of the interest rate versus the utilisation, when
+U <Uoptimal .VRfor variable rate SRfor stable. Expressed in ray.
+#Rasset
+slope 2, interest
+rate slope above
+UoptimalConstant representing the scaling of the interest rate versus the utilisation, when
+UUoptimal .VRfor variable rate SRfor stable. Expressed in ray.
+#Rasset
+t, borrow rate #Rasset
+t =8
+>><
+>>:#Rasset
+base +Uasset
+t
+Uasset
+optimal#Rasset
+slope 1, ifUasset
+t<Uasset
+optimal
+#Rasset
+base + #Rasset
+slope 1+Uasset
+t Uoptimal
+1 Uoptimal#Rasset
+slope 2, ifUasset
+tUoptimal
+10Variable Description
+VRasset
+t, variable
+rateThe rate of variable borrows based on the formula
+above. In ray.
+SRasset
+t, stable rate The rate of stable borrows based on the formula
+above. In ray.
+SRt(x), overall sta-
+ble rate of a user xOverall stable rate of an user across iloans SR(x) =P
+iSRi(x)SDi(x)
+SDi(x)
+SRasset
+t, overall sta-
+ble rateWhen a stable borrow of amount SBnewis issued
+at rateSRt:SRt=SDtSRt 1+SBnewSRt
+SDt+SBnew
+When a user xrepays an amount SB(x) at
+stable rate SR(x):SRt= 8
+>><
+>>:0, ifSD SB(x) = 0
+SDSRt 1 SB(x)SR(x)
+SDt SB(x), ifSD SB(x)>0
+Check the methods decreaseTotalBorrowsStableAndUpdateAverageRate()
+andincreaseTotalBorrowsStableAndUpdateAverageRate() . Expressed in ray.
+SDasset
+t(x), stable
+debt balance per
+asset of user xSDt(x) =SBt(x)(1 +SRt
+Tyear)
+Rasset
+t, overall bor-
+row rateOverall borrow rate of the asset reserve, calculated
+as the weighted average of variable VDtand stable
+borrowsSDtborrows.Rt= 8
+>><
+>>:0, ifDt= 0
+VDtVRt+SDtSRt
+Dt, ifDt>0
+LRt, current liquid-
+ity rateFunction of the overall borrow rate Rand the
+utilisation rate U.LRt=RtUt
+LIt, cumulated liq-
+uidity indexInterest cumulated by the reserve during the time
+interval  T, updated whenever a borrow, deposit,
+repay, redeem, swap, liquidation event occurs.LIt= (LRtTyear+ 1)LIt 1
+LI0= 11027= 1ray
+NIt, reserve nor-
+malised incomeOngoing interest cumulated by the reserve. NIt= (LTRTyear+ 1)LIt 1
+VIt, cumulated vari-
+able borrow indexInterest cumulated by the variable borrows VB, at
+rateVR, updated whenever a borrow, deposit, repay,
+redeem, swap, liquidation event occurs.VIt= (1 +VRt
+Tyear)TxVIt 1
+VI0= 11027= 1ray
+VI(x), user cumu-
+lated variable bor-
+row indexVariable borrow index of the specic user, stored
+when a user opens a variable borrow position.VI(x) =VIt(x)
+VNt(x), user nor-
+malised variable
+debtVNt(x) =
+(1 +VRt
+Tyear)T(x)VIt 1(x)
+11Variable Description
+PB(x), user princi-
+pal borrow balanceBalance stored when a user opens a borrow position. In case of multiple borrows,
+the compounded interest is cumulated each time and it becomes the new principal
+borrow balance.
+ScB(x), scaled bal-
+ance of user xFor a deposit: ScBt(x) =ScBt 1(x) +m
+NIt
+For a withdrawal: ScB(x)t=ScBt 1(x) m
+NIt
+aB(x), user aToken
+BalanceaB(x) =ScB(x)t 1NIt
+ScVB (x), variable
+scaled balance of
+userxFor a deposit: ScVBt(x) =
+ScVBt 1(x) +m
+VNt(x)
+For a withdrawal: ScVBt(x) =
+ScVBt 1(x) m
+VNt(x)
+VDt(x), variable
+debt balance of
+user xVDt(x) =ScVBt(x)Dt
+HF, health factor whenHF < 1, a loan is considered undercollater-
+alised and can be liquidatedHF=
+CollateralinETHassetLTasset
+CBx+TotalFeesETH
+12Protocol Whitepaper
+V1.0
+wow@aave.com
+January 2020
+Abstract
+This document describes the denitions and theory behind the Aave Protocol explaining the dierent aspects
+of the implementation.Contents
+1 Introduction 1
+1.1 Basic Concepts . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 1
+1.2 Formal Denitions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+2 Protocol Architecture 5
+2.1 Lending Pool Core . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+2.2 Lending Pool Data Provider . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+2.3 Lending Pool . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.4 Lending Pool Congurator . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.5 Interest Rate Strategy . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.6 Governance . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7
+3 The LendingPool Contract 8
+3.1 Deposit . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 9
+3.2 Redeem . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+3.3 Borrow . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11
+3.4 Repay . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+3.5 Swap Rate . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+3.6 Liquidation Call . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14
+3.7 Flash Loans . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+3.8 Tokenization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+3.8.1 Limitations of the tokenization model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+4 Stable Rate Theory 17
+4.1 Lending Rate Oracle . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17
+4.2 Current Stable Borrow Rate Rs. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+4.3 Limitations on Stable Rate Positions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+4.4 Stable Rate Rebalancing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18
+4.5 The Rebalancing Process . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19
+5 Conclusion 211 Introduction
+The birth of the Aave Protocol marks Aave's shift from a decentralized P2P lending strategy (direct loan relationship
+between lenders and borrowers, like in ETHLend) to a pool-based strategy. Lenders provide liquidity by depositing
+cryptocurrencies in a pool contract. Simultaneously, in the same contract, the pooled funds can be borrowed by
+placing a collateral. Loans do not need to be individually matched, instead they rely on the pooled funds, as well as
+the amounts borrowed and their collateral. This enables instant loans with characteristics based on the state of the
+pool. A simplied scheme of the protocol is presented in gure 1 below.
+Figure 1: The Aave Protocol
+The interest rate for both borrowers and lenders is decided algorithmically:
+For borrowers, it depends on the cost of money - the amount of funds available in the pool at a specic time.
+As funds are borrowed from the pool, the amount of funds available decreases which raises the interest rate.
+For lenders, this interest rate corresponds to the earn rate, with the algorithm safeguarding a liquidity reserve
+to guarantee withdrawals at any time.
+1.1 Basic Concepts
+Figure 2: Lending Pool Basics
+At the heart of a lending pool is the concept of reserve : every pool holds reserves in multiple currencies, with
+the total amount in Ethereum dened as total liquidity . A reserve accepts deposits from lenders. Users can
+1borrow these funds , granted that they lock a greater value as collateral , which backs the borrow position.
+Specic currencies in the pooled reserves can be congured as collateral or not for borrow positions, only low risk
+tokens should be considered. The amount one can borrow depends on the currencies deposited still available in the
+reserves. Every reserve has a specic Loan-To-Value (LTV) , calculated as the weighted average of the dierent
+LTVs of the currencies composing the collateral, where the weight for each LTV is the equivalent amount of the
+collateral in ETH ; gure 3 shows an example of parameters.
+Every borrow position can be opened with a stable or variable rate . Borrows have innite duration, and there is
+no repayment schedule: partial or full repayments can be made anytime.
+Figure 3: Lending Pool Parameters
+In case of price uctuations, a borrow position might be liquidated . A liquidation event happens when the price of
+the collateral drops below the threshold, LQ, called liquidation threshold . Reaching this ratio channels a liquida-
+tion bonus , which incentivizes liquidators to buy the collateral at a discounted price. Every reserve has a specic
+liquidation threshold, following the same approach as for the LTV. Calculation of the average liquidation threshold La
+Q
+is performed dynamically, using the weighted average of the liquidation thresholds of the collateral's underlying assets.
+At any point in time, a borrow position is characterized by its health factor Hf, a function for the total col-
+lateral and the total borrows which determines if a loan is undercollateralized :
+Hf=TotalCollateralETH La
+Q
+TotalBorrowsETH +TotalFeesETHwhen Hf<1, a loan is considered undercollateralized and can be liquidated
+Further details on liquidation can be found in section 3.6.
+21.2 Formal Denitions
+Variable Description
+T, current times-
+tampCurrent number of seconds dened by block.timestamp .
+Tl, last updated
+timestampTimestamp of the last update of the reserve data. Tlis updated every time a
+borrow, deposit, redeem, repay, swap or liquidation event occurs.
+T, delta time T=T Tl
+Tyear, seconds Number of seconds in a year. Tyear= 31536000
+Tyear, yearly pe-
+riodTyear=T
+Tyear
+Lt, total liquidity Total amount of liquidity available in the reserve. The decimals of this value
+depend on the decimals of the currency.
+Bs, total stable bor-
+rowsTotal amount of liquidity borrowed at a stable rate. The decimals of this value
+depend on the decimals of the currency.
+Bv, total variable
+borrowsTotal amount of liquidity borrowed at a variable rate. The decimals of this value
+depend on the decimals of the currency.
+Bt, total borrows Total amount of liquidity borrowed. The deci-
+mals of this value depend on the decimals of the
+currency.Bt=Bs+Bv
+U, utilization rate Representing the utilization of the deposited
+funds.U=8
+>><
+>>:0, ifLt= 0
+Bt
+Lt, ifLt>0
+Uoptimal , target uti-
+lization rateThe utilization rate targeted by the model, beyond the variable interest rate rises
+sharply.
+Rv0, base variable
+borrow rateConstant for Bt= 0. Expressed in ray.
+Rslope 1, interest rate
+slope below UoptimalConstant representing the scaling of the interest rate versus the utilization, when
+U < U optimal . Expressed in ray.
+Rslope 2, interest rate
+slope above UoptimalConstant representing the scaling of the interest rate versus the utilization, when
+UUoptimal . Expressed in ray.
+Rv, variable borrow
+rateRv=8
+>><
+>>:Rv0+U
+UoptimalRslope 1, ifUUoptimal
+Rv0+Rslope 1+U Uoptimal
+1 UoptimalRslope 2, ifU > U optimal
+Rs, stable rate Implemented in section 4.2. Expressed in ray.
+Mr, average market
+lending rateBase stable borrow rate, dened for iplatforms
+with Pr
+ithe lending rate and Pv
+ithe borrowing
+volume. Expressed in ray.Mr=Pn
+i=1Pi
+rPi
+vPn
+i=1Piv
+3Variable Description
+Rt
+sa, average stable
+rate borrow rateWhen a stable borrow of amount Bnewis issued
+at rate Rs:Rt
+sa=BsRt 1
+sa+BnewRs
+Bs+Bnew
+When a user repays an amount Bxat stable rate
+Rsx:Rt
+sa=8
+>><
+>>:0, ifBs Bx= 0
+BsRt 1
+sa BxRsx
+Bs Bx, ifBs Bx>0
+Check the methods decreaseTotalBorrowsStableAndUpdateAverageRate()
+andincreaseTotalBorrowsStableAndUpdateAverageRate() . Expressed in ray.
+RO, overall borrow
+rateOverall borrow rate of the reserve, calculated as
+the weighted average between the total variable
+borrows Bvand the total stable borrows Bs.RO= 8
+>><
+>>:0, ifBt= 0
+BvRv+BsRsa
+Bt, ifBt>0
+Rl, current liquidity
+rateFunction of the overall borrow rate ROand the
+utilization rate U.Rl=ROU
+Ct
+i, cumulated liq-
+uidity indexInterest cumulated by the reserve during the time
+interval  T, updated whenever a borrow, deposit,
+repay, redeem, swap, liquidation event occurs.Ct
+i= (RlTyear+ 1)Ct 1
+i
+C0
+i= 11027= 1ray
+It
+n, reserve normal-
+ized incomeOngoing interest cumulated by the reserve. It
+n= (RlTyear+ 1)Ct 1
+i
+Bt
+vc, cumulated vari-
+able borrow indexInterest cumulated by the variable borrows Bv, at
+rateRv, updated whenever a borrow, deposit, repay,
+redeem, swap, liquidation event occurs.Bt
+vc= (1 +Rv
+Tyear)TxBt 1
+vc
+B0
+vc= 11027= 1ray
+Bt
+vcx, user cumu-
+lated variable bor-
+row indexVariable borrow index of the specic user, stored
+when a user opens a variable borrow position.Bt
+vcx=Bt
+vc
+Bx, user principal
+borrow balanceBalance stored when a user opens a borrow position. In case of multiple borrows,
+the compounded interest is cumulated each time and it becomes the new principal
+borrow balance.
+Bxc, user com-
+pounded borrow
+balancePrincipal Bxplus the cumulated interests.
+For a variable position: Bxc=Bvc
+Bvcx(1 +Rv
+Tyear)TxBx
+For a stable position: Bxc= (1 +Rs
+Tyear)TxBx
+Hf, health factor when Hf<1, a loan is considered undercollater-
+alized and can be liquidatedHf=TotalCollateralETH La
+Q
+Bt+TotalFeesETH
+42 Protocol Architecture
+The current implementation of the protocol is as follows:
+Figure 4: Protocol Architecture
+2.1 Lending Pool Core
+The LendingPoolCore contract is the center of the protocol, it:
+holds the state of every reserve and all the assets deposited,
+handles the basic logic (cumulation of the indexes, calculation of the interest rates...).
+2.2 Lending Pool Data Provider
+TheLendingPoolDataProvider contract performs calculations on a higher layer of abstraction than the LendingPoolCore
+and provides data for the LendingPool ; specically:
+Calculates the ETH equivalent a user's balances (Borrow Balance, Collateral Balance, Liquidity Balance) to
+assess how much a user is allowed to borrow and the health factor.
+Aggregates data from the LendingPoolCore to provide high level information to the LendingPool .
+Calculate of the Average Loan to Value and Average Liquidation Ratio.
+52.3 Lending Pool
+The LendingPool contract uses the LendingPoolCore andLendingPoolDataProvider to interact with the reserves
+through the actions:
+Deposit
+RedeemBorrow
+RepayRate swap
+LiquidationFlash loan
+One of the advanced features implemented in the LendingPool contract is the tokenization of the lending position.
+When a user deposits in a specic reserve, he receives a corresponding amount of aTokens , tokens that map the
+liquidity deposited and accrue the interests of the deposited underlying assets. Atokens are minted upon deposit,
+their value increases until they are burned on redeem or liquidated. Whenever a user opens a borrow position, the
+tokens used as collateral are locked and cannot be transferred. Further details on the tokenization are in section 3.8.
+2.4 Lending Pool Congurator
+The LendingPoolConfigurator provides main conguration functions for LendingPool andLendingPoolCore :
+Reserve initialization
+Reserve conguration
+Enable/disable borrowing on a reserve
+Enable/disable the usage of a specic reserve as collateral.
+The LendingPoolConfigurator contract will be integrated in Aave Protocol governance.
+2.5 Interest Rate Strategy
+The InterestRateStrategy contract holds the information needed to update the interest rates of a specic reserve
+and implements the update of the interest rates. Every reserve has a specic InterestRateStrategy contract.
+Specically, within the base strategy contract DefaultReserveInterestRateStrategy the following are dened:
+Base variable borrow rate Rv0
+Interest rate slope below optimal utilisation Rslope 1
+Interest rate slope beyond optimal utilisation Rslope 2
+The current variable borrow rate is:
+Rv=(
+Rv0+U
+UoptimalRslope 1, ifUUoptimal
+Rv0+Rslope 1+U Uoptimal
+1 UoptimalRslope 2, ifU > U optimal
+This interest rate model allows for calibration of key interest rates:
+AtU= 0,Rv=Rv0
+AtU=Uoptimal ,Rv=Rv0+Rslope 1
+Above Uoptimal , the interest rate rises sharply to take into account the cost of capital.
+The stable borrow rate follows the same model described in section 4.2.
+62.6 Governance
+The rights of the protocol are controlled by the LEND token. Initially, the Aave Protocol will be launched with
+a decentralized on-chain governance based on the DAOStack framework which will evolve to a fully autonomous
+protocol. On-chain implies all votes are binding: actions that follow a vote are hard-coded and must be executed.
+To understand the scope of the governance it's important to make the distinction:
+TheAave Protocol is bound to evolve and will allow the creation of multiple lending pools with segregated
+liquidity, parameters, permissions, and type of assets.
+TheAave Lending Pool is the rst pool of the Aave protocol until the Pool Factory Update is released and
+anyone can create their own pool.
+Within the Aave Protocol, the governance will take place at two level :
+1.TheProtocol's Governance voting is weighted by LEND for decisions related to protocol parameters and
+upgrades of the smart contract. It can be compared to MakerDAO's governance where stakeholders vote on
+current and future parameters of the protocol.
+2.ThePool's Governance where your vote is weighted based on your share of pool liquidity expressed in
+aTokens. The votes cover pool specic parameters such as assets used as collateral or to be borrowed.
+Each Pool will have its own governance, under the umbrella of the Protocol's Governance.
+More details on the Governance will be published in a Governance Proposal to the community.
+73 The LendingPool Contract
+The actions implemented within LendingPool allow users to interact with the reserve. All the actions follow this
+specic sequence:
+Figure 5: The LendingPool Contract
+83.1 Deposit
+The deposit action is the simplest one and does not have any particular state check. The sequence of action is:
+Figure 6: Deposit funds
+93.2 Redeem
+The redeem action allows users to exchange an amount of aTokens for the underlying asset. The actual amount
+to redeem is calculated using the aToken/underlying exchange rate Eiin section 3.8. The action is dened as follows:
+Figure 7: Redeem funds
+103.3 Borrow
+The borrow action transfers to the user a specic amount of underlying asset, in exchange of a collateral that remains
+locked. The ow of action can be described as follows:
+Figure 8: Borrow funds
+113.4 Repay
+The repay action allows the user to repay completely or partially the borrowed amount plus the origination fee and
+the accrued interest.
+Figure 9: Repay a loan
+123.5 Swap Rate
+The swap rate action allows a user with a borrow in progress to swap between variable and stable borrow rate.
+Figure 10: Swap Rate
+133.6 Liquidation Call
+The liquidationcall contract allows any external actor to purchase part of a collateral at a discounted price. In
+case of a liquidation event, a maximum of 50% of the loan can be liquidated, which will bring the health factor back
+above 1.
+Figure 11: Liquidation
+143.7 Flash Loans
+The ash loan action will allow users to borrow from the reserves within a single transaction, as long as the user
+returns more liquidity that has been taken.
+Figure 12: Flash Loan
+Flash loans temporarily transfer the funds to a smart contract that respects the IFlashLoanEnabledContract.sol
+interface. The address of the contract is a parameter of the action. After the funds are transferred, the method
+executeOperation() is executed on the external contract. The contract can do whatever action is needed with the
+borrowed funds. After the method executeOperation() is completed, a check is performed to verify that the funds
+plus fee have been returned to the LendingPool contract. The fee is then accrued to the reserve, and the state of
+the reserve is updated. If less funds than what was borrowed have been returned to the reserve, the transaction is
+reverted.
+153.8 Tokenization
+The Aave protocol implements a tokenization strategy for liquidity providers. Upon deposit, the depositor receives a
+corresponding amount of derivative tokens, called Aave Tokens (aTokens for short) that map 1:1 the underlying
+assets. The balance of aTokens of every depositor grows over time, driven by the perpetual accrual of interest of
+deposits. aTokens are fully ERC20 compliant.
+aTokens also natively implement the concept of interest rate redirection. Indeed, the value accrued over time by
+the borrowers' interest rate payments is distinct from the principal value. Once there is a balance of aTokens, the
+accrued value can be redirected to any address, eectively splitting the balance and the generated interest. We call
+the continuous ow of accumulated interest over time the interest stream .
+To implement this tokenization strategy, Aave introduced the following concepts in the aToken contract:
+1.User x balance index It
+x:Is the value of the reserve normalized income It
+xat the moment of execution of
+the last action by the user.
+2.Principal balance Bp:Is the balance stored in the balances mapping of the ERC20 aToken contract. The
+principal balance gets updated on every action that the user executes on the aToken contract (deposit, redeem,
+transfer, liquidation, interest rate redirection)
+3.Redirection address Ar:When a user decides to redirect his interest stream to another address, a new
+redirection address Aris provided. If no redirection of the interest stream is performed, Aris 0
+4.Redirected Balance Bx
+r:Whenever a user redirects his interest stream, the balance of user redirecting is
+added to the redirected balance Brof the address specied by Br. Dened as follows:
+Bx
+r=P
+XBp
+Where Xis the set of users redirecting the interest stream to the user x
+The redirected balance decreases whenever a user x02Xredeems or transfers his aTokens to another user
+that is not redirecting to x.
+5.Current balance Bc: Is the balance returned by the balanceOf() function of the aToken contract. Dened
+as follows:
+Bx
+c=8
+<
+:0, ifBx
+p= 0 and Bx
+r= 0
+Bx
+p+Bx
+r(In
+Ix 1), if Ar<>0
+Bx
+pIn
+Ix+Bx
+r(In
+Ix 1), if Ar= 0
+3.8.1 Limitations of the tokenization model
+The described tokenization model has many advantages compared to the widely used, exchange rate based approach,
+but also some drawbacks, specically:
+1.It's impossible to transfer the whole balance at once: Given the perpetual accrual of the interest rate,
+there is no way to specify the exact amount to transfer, since the interest will keep accruing even while the
+transfer transaction is being conrmed. This means that having exactly 0 balance after a transfer is impossible,
+rather, a very small balance (dust balance) will be left to the from account executing the transfer. Note that
+this could have been avoided by adding specic logic to handle this particular edge case, but this would have
+meant adding a non standard behavior to the ERC20 transfer function, and for this reason we avoided it. Even
+though this is not a relevant issue, it's important to note that is possible to completely clear the remaining
+balance by either 1. execute another transfer, which will most likely transfer the remaining dust balance as it
+would be too small to accrue interest in a reasonably short amount of time, or 2. redeem the dust balance and
+transfer the underlying asset.
+2.Interest stream can only be redirected if there is a principal balance: This means that only accounts
+that have a principal balance Bpcan redirect their interest. If users redeem or transfer everything, their
+interest redirection is reset. As a side eect of this, interest generated only by the redirected balance Brcannot
+be redirected.
+164 Stable Rate Theory
+The following chapter explains how the stable rates are applied to the system and the limitations.
+Implementation of a xed rate model on top of a pool is complicated. Indeed, xed rates are hard to handle
+algorithmically, as the cost of borrowing money varies with market conditions and the liquidity available. There
+might therefore be situations (sudden market changes, bank runs ...) in which handling stable rate borrow positions
+would need using specic heuristics based on time or economical constraints. Following this reasoning, we identied
+two possible ways of handling xed rates:
+1.Imposing time constraints : xed rates might work perfectly ne in a time constrained fashion. If a loan
+has a stable duration, it should survive extreme market conditions, as the borrower must repay at the end of
+the loan period. Unfortunately, time constrained xed rate loans aren't suitable for our specic use case of
+open ended loan. It would require a certain degree of UX friction where users would need to create and handle
+multiple loans with dierent times constraints.
+2.Imposing rates constraints : An interest rate calculated at the beginning of a loan might be impacted by
+market conditions, keeping it from staying xed. If the rate diverges too much from the market, it can be
+readjusted. This would not be a pure xed rate, open term loan - as the rate might vary throughout the loan
+duration { yet users will experience actual xed rates during specic time periods, or when there is enough
+liquidity available. This particular implementation has been chosen to be integrated into Aave's Protocol
+under the name stable rate .
+4.1 Lending Rate Oracle
+Figure 13: Lending Rate Oracle
+The rst component to be integrated into the Protocol protocol is a Lending Rate Oracle, which will provide
+information to the contracts on the actual market rates that other lending platforms, both centralized and
+decentralized, are providing. The average market lending rate Mris dened for i platforms with Pi
+rthe lending rate
+andPi
+vthe borrowing volume:
+Mr=Pn
+i=1Pi
+rPi
+vPn
+i=1Piv
+The market rate will be updated daily, initially by Aave.
+174.2 Current Stable Borrow Rate Rs
+The current stable borrow rate is calculated as follows:
+Rt
+s=(
+Mr+U
+UoptimalRslope 1, ifUUoptimal
+Mr+Rslope 1+U Uoptimal
+1 UoptimalRslope 2, ifU > U optimal
+With:
+-Mrthe average market lending rate.
+-Rslope 1the interest rate slope below Uoptimal , increases the rate as Uincreases.
+-Rslope 2the interest rate slope beyond Uoptimal , increases as the dierence between UandUoptimal increases.
+-Uis the utilization rate.
+Note: Rsdoes NOT impact existing stable rates positions { this is applied only to new opened positions.
+4.3 Limitations on Stable Rate Positions
+To avoid abuses on stable rate loans, the following limitations have been applied to the stable rate borrowing model:
+1.Users cannot deposit as collateral more liquidity than what they are trying to borrow. Eg. a user deposits 10
+million DAI collateral, tries to borrow 1 million DAI. This is to prevent the following attack vector:
+Given: Bs= 18% APR ,Mr= 9% APR ,Rl= 12% APR
+Users might try to articially lower Bsto the value of Mrby depositing a huge amount of liquidity which
+would cause Bsto drop, then borrow from the same liquidity at a lower rate, withdraw the liquidity previously
+deposited to cause Bsand the liquidity rate Rlto raise again; then nally deposit the amount borrowed to
+earn interest on the previously borrowed funds. Although this attack can still be carried out using multiple
+accounts, this particular constraint makes the attack more complicated as it requires more money (and a
+dierent collateral currency). This works well in combination with the interest rate rebalancing in the next
+section.
+2.Borrowers will only be able to borrow up to Trof the available liquidity at the current borrow rate. So, for
+every specic value of Bs, there is only up to Trof liquidity available for a single borrower. This is to avoid
+that a specic borrower would borrow too much available liquidity at a too competitive rate.
+4.4 Stable Rate Rebalancing
+The last and perhaps most important constraint of the stable rate model is the rate rebalancing. This is to work
+around changes in market conditions or increased cost of money within the pool.
+The stable rate rebalancing will happen in two specic situations:
+1.Rebalancing up . The stable rate of a user xis rebalanced to the most recent value of Bswhen a user could
+earn interest by borrowing:
+Bx
+s< RlwithBx
+sthe stable borrow rate of user x
+2.Rebalancing down . The stable rate of a user xis rebalanced to the most recent value of Bs, if:
+Bx
+s> Bs(1 +  Bs)
+with  Bsa rate delta established by governance which denes the window above Bsto rebalance interest
+rates. If a user pays too much interest beyond that range, the rate is balanced down.
+184.5 The Rebalancing Process
+The LendingPool contract exposes a function rebalanceStableBorrowRate(address reserve, address user)
+which allows to rebalance the stable rate interest of a specic user. Anybody can call this function: however, there
+isn't any direct incentive for the caller to rebalance the rate of a specic user. For this reason, Aave will provide
+an agent that will periodically monitor all the stable rates positions and rebalance the ones that will be deemed
+necessary. The rebalance strategy will be decided ochain by the agent, this means that users that satisfy the
+rebalance conditions may not be rebalanced immediately. Since those conditions depend on the liquidity avail-
+able and the state of market, there might be some transitory situations in which an immediate rebalance is not needed.
+This does not add any element of centralization to the protocol. Even if the agent stops working, anybody can call
+the rebalance function of the LendingPool contract. Although there isn't any direct incentive in doing it (\why
+should I do it?") there is an indirect incentive for the ecosystem. In fact, even if the agent should cease to exist,
+depositors might still want to trigger a rebalance up of the lowest borrow rate positions, to increase the liquidity
+rate and/or force borrowers to close up their positions, increasing the available liquidity. In case of a rescale down,
+instead, borrowers have a direct incentive in performing a rebalance of their positions to lower the interest rate.
+The following owchart explains the sequence of actions of the function rebalanceStableBorrowRate() . The
+compounded balance that is accumulated until the instant at which the rebalance happens, is not aected by the
+rebalance.
+19Figure 14: Rebalancing
+205 Conclusion
+TheAave Protocol relies on a lending pool model to oer high liquidity. Loans are backed by collateral and
+represented by aTokens, derivative tokens which accrue the interests. The parameters such as interest rate and
+Loan-To-Value are token specic.
+Aave improves Decentralized Finance's current oering, bringing two key innovations to the lending ecosystem:
+Stable Rates to help borrowers' nancial planning;
+Flash Loans to borrow without collateral during a single transaction.
+Following the launch of the mainnet, Aave will uphold its commitment to decentralization through additional features.
+The Pool Factory will allow anyone to launch their own lending pool based on our smart-contracts. Governance will
+be on-chain with rights represented by:
+The LEND token at Protocol level for updates of the smart contract;
+aTokens at Pool level for pool specic parameters.
+21
