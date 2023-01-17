@@ -29,4 +29,6 @@ Cheers!
 
 **Note: Separating into several datasets to be merged after full review. Current train/test data needs a decent chunk of processing work.**
 
-UPDATE: Whitepaper collection almost complete. Going to initally split into technical & social datasets. 
+UPDATE: Whitepaper collection underway. Pdf repo via @fgallaire, found here: https://github.com/Cryptorating/whitepapers
+
+Going to initally split into technical & social datasets. 
