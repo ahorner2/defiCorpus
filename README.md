@@ -31,4 +31,4 @@ Cheers!
 
 UPDATE: Whitepaper collection underway. Pdf repo via @fgallaire, found here: https://github.com/Cryptorating/whitepapers
 
-Going to initally split into technical & social datasets. 
+Going to initally split into technical & social datasets. Have around 10k Discord messages & 300 articles ready to add to corp.
